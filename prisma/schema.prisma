@@ -1,0 +1,337 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+enum AcademicYearStatus {
+  PLANNING
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+enum EnrollmentStatus {
+  APPLICANT
+  ADMITTED
+  ENROLLED
+  TRANSFERRED
+  WITHDRAWN
+  COMPLETED
+}
+enum WorkflowStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  RETURNED
+  PUBLISHED
+  ARCHIVED
+  CANCELLED
+}
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  FAILURE
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  username           String?             @unique
+  email              String?             @unique
+  phoneE164          String?             @unique
+  passwordHash       String?
+  status             AccountStatus       @default(INVITED)
+  displayName        String
+  emailVerifiedAt    DateTime?
+  phoneVerifiedAt    DateTime?
+  passwordChangedAt  DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  roleAssignments    UserRoleAssignment[]
+  studentProfile     Student?
+  staffProfile       StaffProfile?
+  auditEvents        AuditEvent[]         @relation("AuditActor")
+  approvalActions    ApprovalAction[]
+  notifications      Notification[]
+
+  @@index([status, createdAt])
+}
+
+model Role {
+  id          String              @id @default(cuid())
+  key         String              @unique
+  name        String
+  description String?
+  isSystem    Boolean             @default(false)
+  createdAt   DateTime            @default(now())
+  assignments UserRoleAssignment[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model UserRoleAssignment {
+  id          String    @id @default(cuid())
+  userId      String
+  roleId      String
+  scopeType   String?
+  scopeId     String?
+  startsAt    DateTime  @default(now())
+  endsAt      DateTime?
+  revokedAt   DateTime?
+  assignedBy  String?
+  reason      String
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role        Role      @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt, startsAt, endsAt])
+  @@index([roleId, scopeType, scopeId])
+}
+
+model OrganizationalUnit {
+  id          String               @id @default(cuid())
+  code        String               @unique
+  name        String
+  unitType    String
+  parentId    String?
+  active      Boolean              @default(true)
+  parent      OrganizationalUnit?  @relation("OrgTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children    OrganizationalUnit[] @relation("OrgTree")
+  createdAt   DateTime             @default(now())
+
+  @@index([parentId, active])
+}
+
+model AcademicYear {
+  id          String             @id @default(cuid())
+  name        String             @unique
+  startsOn    DateTime           @db.Date
+  endsOn      DateTime           @db.Date
+  status      AcademicYearStatus @default(PLANNING)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  sections    Section[]
+  enrollments Enrollment[]
+
+  @@index([status, startsOn])
+}
+
+model Grade {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  name      String
+  sortOrder Int
+  active    Boolean   @default(true)
+  sections  Section[]
+  createdAt DateTime  @default(now())
+
+  @@index([active, sortOrder])
+}
+
+model Section {
+  id             String       @id @default(cuid())
+  academicYearId String
+  gradeId        String
+  name           String
+  capacity       Int?
+  active         Boolean      @default(true)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  grade          Grade        @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  enrollments    Enrollment[]
+  createdAt      DateTime     @default(now())
+
+  @@unique([academicYearId, gradeId, name])
+  @@index([academicYearId, gradeId, active])
+}
+
+model Student {
+  id                String            @id @default(cuid())
+  userId            String?           @unique
+  studentNumber     String            @unique
+  legalName         String
+  preferredName     String?
+  dateOfBirth       DateTime?         @db.Date
+  admissionDate     DateTime?         @db.Date
+  status            EnrollmentStatus  @default(APPLICANT)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  user              User?             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  enrollments       Enrollment[]
+  guardianLinks     StudentGuardian[]
+
+  @@index([legalName])
+  @@index([status, createdAt])
+}
+
+model Enrollment {
+  id             String       @id @default(cuid())
+  studentId      String
+  academicYearId String
+  sectionId      String
+  status         EnrollmentStatus @default(ADMITTED)
+  effectiveFrom  DateTime     @db.Date
+  effectiveTo    DateTime?    @db.Date
+  recordedById   String?
+  reason         String?
+  createdAt      DateTime     @default(now())
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  section        Section      @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, academicYearId])
+  @@index([sectionId, status])
+  @@index([studentId, effectiveFrom])
+}
+
+model Guardian {
+  id             String            @id @default(cuid())
+  legalName      String
+  phoneE164      String?
+  email          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  studentLinks   StudentGuardian[]
+
+  @@index([legalName])
+  @@index([phoneE164])
+}
+
+model StudentGuardian {
+  studentId       String
+  guardianId      String
+  relationship    String
+  isPrimary       Boolean  @default(false)
+  canReceiveAlerts Boolean @default(true)
+  verifiedAt      DateTime?
+  student         Student  @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  guardian        Guardian @relation(fields: [guardianId], references: [id], onDelete: Restrict)
+  createdAt       DateTime @default(now())
+
+  @@id([studentId, guardianId])
+  @@index([guardianId, isPrimary])
+}
+
+model StaffProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  employeeNumber String?  @unique
+  jobTitle       String?
+  active         Boolean  @default(true)
+  hiredAt        DateTime? @db.Date
+  endedAt        DateTime? @db.Date
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+model ApprovalRequest {
+  id             String         @id @default(cuid())
+  workflowType   String
+  resourceType   String
+  resourceId     String
+  status         WorkflowStatus @default(SUBMITTED)
+  submittedById  String
+  submittedAt    DateTime       @default(now())
+  decidedAt      DateTime?
+  summary        String
+  currentVersion Int            @default(1)
+  actions        ApprovalAction[]
+
+  @@index([workflowType, status, submittedAt])
+  @@index([resourceType, resourceId, currentVersion])
+}
+
+model ApprovalAction {
+  id                String          @id @default(cuid())
+  requestId         String
+  actorId           String
+  action            String
+  fromStatus        WorkflowStatus?
+  toStatus          WorkflowStatus
+  reason            String?
+  createdAt         DateTime        @default(now())
+  request           ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  actor             User            @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([requestId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model AuditEvent {
+  id            String       @id
+  occurredAt    DateTime     @default(now())
+  actorId       String?
+  effectiveRole String?
+  action        String
+  resourceType  String
+  resourceId    String?
+  scopeType     String?
+  scopeId       String?
+  outcome       AuditOutcome
+  reason        String?
+  correlationId String?
+  changes       Json?
+  previousHash  String
+  eventHash     String
+  actor         User?        @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([occurredAt, id])
+  @@index([actorId, occurredAt])
+  @@index([action, occurredAt])
+  @@index([resourceType, resourceId, occurredAt])
+  @@index([scopeType, scopeId, occurredAt])
+}
+
+model AuditCheckpoint {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  lastEventId    String
+  lastEventHash  String
+  eventCount     BigInt
+  externalRef    String?
+
+  @@index([createdAt])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  recipientId String
+  type        String
+  title       String
+  body        String
+  href        String?
+  dedupeKey   String?  @unique
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+  recipient   User     @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+
+  @@index([recipientId, readAt, createdAt])
+}
