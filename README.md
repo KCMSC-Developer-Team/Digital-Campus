@@ -1,62 +1,60 @@
 # KCMSC Digital Campus
 
-Private institutional operations platform for K C Model School & College, Bangladesh. The public school website remains a separate application.
+Private institutional operating system for K C Model School & College. The public school website remains a separate application.
 
 ## Current implementation status
 
-This repository is a new foundation scaffold created because no existing application repository was present in the available workspace. It is **not production-ready** and does not yet provide authentication, protected dashboards, admission workflows, or live institutional data.
+Implemented in this repository:
+- Next.js App Router / TypeScript / Tailwind foundation.
+- PostgreSQL data model for identity, multi-role assignments, organizational units, academic years, grades, sections, students, enrollments, guardians, staff, approvals, notifications, sessions, login attempts, and audit events/checkpoints.
+- Database-backed credentials sign-in with scrypt password hashes, opaque random session tokens stored as SHA-256 hashes, HttpOnly cookies, server-side session resolution, account status checks, and sign-out.
+- Login-attempt recording and a basic durable database-backed attempt limit.
+- Seed catalog for the roles and permission vocabulary in `scripts/seed.mjs`.
+- Role-aware dashboard navigation and limited read views for records when the account has a global scope. The initial IT Manager bootstrap does not receive audit access.
+- Hash-chain audit helper and an audit writer intended to be called within a Prisma transaction.
+- Explicit permission checks at the server page boundary.
 
-Implemented in this foundation:
-- Next.js App Router and strict TypeScript project setup.
-- Responsive institutional dashboard shell with grouped navigation, module filtering, operational shortcuts, and explicit implementation/readiness states.
-- Centralized CSS tokens and responsive layout styles.
-- Initial normalized Prisma models for identity, roles/permissions, academic years, grades, sections, students, enrollments, guardians, staff, approvals, notifications, and audit records.
-- Pure permission-policy helper with scope checks.
-- Audit hash-chain helper and unit tests for the helper functions.
-- Environment variable template without credentials.
+Not yet production-complete:
+- Section-scoped record filtering across every domain; this build intentionally does not expose student lists to scoped accounts until filtering is implemented.
+- Account administration UI, invitation/reset flows, MFA, email verification, and recovery.
+- Full admission lifecycle, document storage, timetabling engine, attendance entry/corrections, syllabus and class diary publishing, assignments, exams, results, governance actions, durable job queue, email delivery, audit verification/checkpoint export, and comprehensive tests.
+- A committed initial Prisma migration. Create and review one against the configured PostgreSQL instance before deploying.
 
-Not yet implemented or verified:
-- Authentication/session provider and account activation.
-- Database migrations applied to PostgreSQL.
-- Persistence-integrated authorization and audit transactions.
-- Admission-to-account-provisioning workflow.
-- Audit reader/writer separation, protected checkpoints, and independent backup storage.
-- Background job queue, email delivery, private file storage, operational dashboards, and deployment.
+Do not load live student or guardian data until the outstanding record-level scope checks, migration, backup policy, audit verification, and security tests are reviewed.
 
 ## Requirements
 
-- Node.js 22+
-- PostgreSQL 15+
-- npm
+- Node.js 22 LTS or a version supported by the locked Next.js release.
+- PostgreSQL 15 or newer, reachable from the app host.
+- A private `.env` file based on `.env.example`.
 
 ## Local setup
 
-1. Copy `.env.example` to `.env` and set a local PostgreSQL `DATABASE_URL` and a strong random `AUTH_SECRET`.
-2. Install dependencies with `npm install`.
-3. Generate Prisma Client with `npm run db:generate`.
-4. Validate the schema with `npm run db:validate`.
-5. After reviewing the schema, create a development migration with `npm run db:migrate:dev`.
-6. Run `npm run dev`.
+1. Install dependencies: `npm ci`
+2. Set `DATABASE_URL` to a dedicated PostgreSQL database in `.env`.
+3. Generate Prisma Client: `npm run db:generate`
+4. For a new development database, review schema and run `npm run db:migrate -- --name init`.
+5. Set the four `BOOTSTRAP_ADMIN_*` variables in `.env` to values for an institution-authorized administrator. Use a unique random password of at least 16 characters.
+6. Run `npm run db:seed` once. It creates roles/permissions and the initial IT Manager account only if that account does not already exist. It refuses to overwrite an existing account.
+7. Remove the `BOOTSTRAP_ADMIN_*` values from `.env` after seeding.
+8. Start the app: `npm run dev`; open `http://localhost:3000`.
 
-Do not point development commands at production. Never use database reset commands against production.
+For production, generate and review a migration in development, commit it, and use `npm run db:deploy` during deployment. Do not run `prisma migrate dev` against production.
 
-## Quality checks
+## Useful commands
 
+- `npm run db:validate`
+- `npm run db:generate`
+- `npm run db:studio` (local trusted administrators only)
 - `npm run typecheck`
 - `npm run lint`
 - `npm test`
-- `npm run db:validate`
 - `npm run build`
 
-These commands must be run after dependencies are installed. Passing helper tests does not establish that authorization is correctly enforced by application routes; route-level security tests are still required.
+## Security notes
 
-## Deployment outline
-
-1. Provision separate staging and production PostgreSQL databases with least-privilege credentials.
-2. Configure HTTPS and DNS for `campus.kcmsc.edu.bd` at the deployment provider.
-3. Set environment variables in the hosting control plane, never in source control.
-4. Run reviewed migrations with `npm run db:migrate:deploy` as a release step.
-5. Deploy the application and verify health checks, authentication, access boundaries, and rollback readiness.
-6. Configure encrypted, independent backups and test restoration before onboarding real records.
-
-Production deployment is blocked until authentication, route-level authorization, migrations, audit persistence/integrity, backups, monitoring, and the relevant tests are implemented and verified.
+- Never commit `.env`, database credentials, bootstrap credentials, or production exports.
+- The first seeded IT Manager has a global role-assignment scope to allow setup, but does not receive `audit.read` or student-directory permissions. Review and reduce setup privileges after creating individually assigned accounts.
+- The audit chain is tamper-evident only when writers are serialized and verification/checkpoints are protected independently. A database administrator could rewrite an unanchored chain. Do not describe it as tamper-proof.
+- Rate limiting in this foundation is a basic database attempt counter. Before public deployment, add edge/network throttling and monitoring, trusted-proxy configuration, MFA for privileged accounts, secure headers, backup/restore drills, and a security review.
+- `x-forwarded-for` is only trustworthy when the app is behind a known, correctly configured proxy. Configure that trust boundary before relying on IP-based abuse detection.

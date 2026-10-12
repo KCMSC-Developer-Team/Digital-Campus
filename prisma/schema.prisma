@@ -64,6 +64,8 @@ model User {
   auditEvents        AuditEvent[]         @relation("AuditActor")
   approvalActions    ApprovalAction[]
   notifications      Notification[]
+  sessions           Session[]
+  loginAttempts      LoginAttempt[]
 
   @@index([status, createdAt])
 }
@@ -334,4 +336,33 @@ model Notification {
   recipient   User     @relation(fields: [recipientId], references: [id], onDelete: Restrict)
 
   @@index([recipientId, readAt, createdAt])
+}
+
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  userAgent  String?
+  ipHash     String?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  id          String   @id @default(cuid())
+  userId      String?
+  identifier  String
+  succeeded   Boolean  @default(false)
+  occurredAt  DateTime @default(now())
+  ipHash      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([identifier, occurredAt])
+  @@index([ipHash, occurredAt])
 }

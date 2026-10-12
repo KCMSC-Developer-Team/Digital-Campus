@@ -42,5 +42,10 @@ export function isAuthorized(
 
 /** Global audit is a separately granted permission, never implied by an operational role. */
 export function canReadGlobalAudit(context: AuthorizationContext | null | undefined): boolean {
-  return isAuthorized(context, { permission: 'audit.read' });
+  const governingRoles = new Set(['CHAIRMAN', 'VICE_CHAIRMAN', 'TRUSTEE_BOARD_MEMBER']);
+  if (!context?.userId) return false;
+  return context.assignments.some((assignment) => assignment.active
+    && governingRoles.has(assignment.role)
+    && assignment.permissions.includes('audit.read')
+    && assignment.scopes.includes('*'));
 }
