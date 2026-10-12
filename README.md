@@ -8,7 +8,8 @@ This repository is a new foundation scaffold created because no existing applica
 
 Implemented in this foundation:
 - Next.js App Router and strict TypeScript project setup.
-- Minimal responsive base page and centralized CSS tokens.
+- Responsive institutional dashboard shell with grouped navigation, module filtering, operational shortcuts, and explicit implementation/readiness states.
+- Centralized CSS tokens and responsive layout styles.
 - Initial normalized Prisma models for identity, roles/permissions, academic years, grades, sections, students, enrollments, guardians, staff, approvals, notifications, and audit records.
 - Pure permission-policy helper with scope checks.
 - Audit hash-chain helper and unit tests for the helper functions.
